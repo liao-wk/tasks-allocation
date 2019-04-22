@@ -1,0 +1,216 @@
+function funs = task_alloc_funs2
+%UNTITLED 此处显示有关此函数的摘要
+%   此处显示详细说明
+funs.Conflict_average = @Conflict_average;
+funs.Opp_Weight = @Opp_Weight; % 得到任务在卫星下的需求度
+funs.Initial_solution = @Initial_solution; % 按照某种规则得到初始解
+funs.conflict_check = @conflict_check; % 冲突度检查
+funs.conflict_dis_time = @conflict_dis_time; % 无人机的距离冲突和时间窗判段
+funs.resource_check = @resource_check; % 剩余资源检查
+end
+%% 子函数1，计算任务在不同的观测资源下的平均冲突度
+function Conflict_ave = Conflict_average(tasks_num,resource_num,opp,Conflict)
+Conflict_ave = zeros(tasks_num,resource_num);
+% 计算机会矩阵中大于0的每一列的元素个数
+for j = 1:resource_num
+    A = opp(opp(:,j) > 0); % 机会矩阵中大于0的元素向量
+    num = size(A,1)-1; % 该向量的行数减一
+    Conflict_ave(:,j) = Conflict(:,j)/num; % 在资源r下的各个任务的平均冲突度
+end
+end
+%% 子函数2，计算任务在观测资源下的需求度，价值越高，观测机会越小的任务对资源的需求度越高
+function oppweight = Opp_Weight(tasks_num,resource_num,opp,W)
+oppweight = zeros(tasks_num,resource_num);
+for j = 1:resource_num
+    for i = 1:tasks_num
+        if opp(i,j) ~= 0
+            oppweight(i,j) = W(i)/opp(i,j); % 任务i的权重除以在资源j下的机会
+        else
+            oppweight(i,j) = 0; % 如果任务在资源下没有观测机会，那么需求度为0.
+        end
+    end
+end
+end
+%% 子函数3，获取初始解 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function Solu_Tabu = Initial_solution(Resou_num,tasks_num,Conflict_tasks,Tasks,SE_sats,duration,UAVs,t_pos,...
+    sats_start,sats_end,uavs1_start,uavs1_end)
+Tasks_Tabu = zeros(tasks_num,Resou_num); % 将任务分配到不同的资源下
+tasks_demand = zeros(tasks_num,2);
+tasks_demand(:,2) = Tasks.Opp_weight;
+% 对tasks_demand按第2列的数字大小降序排列
+[tasks_demand(:,2),index] = sort(tasks_demand(:,2),'descend');
+tasks_demand(:,1) = index; % index是列向量
+vir_re = zeros(1,tasks_num); % 虚构资源,列向量，行代表任务
+% TODO分配任务到各资源当中，但是需要判断未分配的任务是否会与已分配的任务冲突
+for i = 1:tasks_num
+    p = tasks_demand(i,1); % 对应的任务编号
+    % 找到每个任务对应的观测机会
+    % 对每个任务分配一个资源候选集,根据任务对应的观测机会填充候选集
+    Candidates = find(Tasks.Opportunity(i,:)>0);
+    C_size = size(Candidates,2); % 资源候选集的个数
+    conflict = zeros(2,C_size);  % 任务i在各资源的冲突度,第1行是资源索引，
+    % 第2行是任务在对应资源的冲突度大小
+    conflict(1,:) = Candidates;
+    conflict(2,:) = Conflict_tasks.Ave_conflict(i,Candidates);
+    conflict_values = conflict;
+    if C_size == 0 % 如果没有可观测资源，则分配到虚拟资源当中
+        vir_re(p) = 1; 
+    elseif C_size == 1 % 如果只有一个资源，任务分配到对应的资源当中
+        Tasks_Tabu(p,conflict(1,1)) = 1; 
+    else % 有好几个可观测的观测资源
+        %  冒泡排序法，按平均冲突度进行从小到大排序
+        for x = 1:C_size
+            conflict_values(:,x) = conflict(:,1);
+            for y = x:C_size
+                if conflict_values(2,x) > conflict(2,y)
+                    temp = conflict_values(:,x);
+                    conflict_values(:,x) = conflict(:,y);
+                    conflict(:,y) = temp;
+                end
+            end
+        end
+    end
+    % 选择资源候选集中，平均冲突度最小的资源进行分配，直到任务被分配到真实资源或虚拟资源为止
+    % 冲突任务检查：当前任务与已调度任务是否发生冲突
+    % 资源限制检查：剩余时间资源和开关机次数限制
+    conflict = conflict_values;
+    for j = 1:C_size
+        % 获取该资源下有哪些已调度的任务
+        resource_name = conflict(1,j); % 找到第j个资源
+        % 已调度的任务是在第j个资源下观测机会等于1的任务集
+        indexes = find(Tasks_Tabu(:,j)==1);
+        % 判断任务是否与在资源resource_name下已调度的任务是否冲突，0表示不冲突，否则为1
+        check_num = conflict_check(resource_name,SE_sats,indexes,duration,UAVs,t_pos,p,...
+    sats_start,sats_end,uavs1_start,uavs1_end);
+        if check_num == 0 
+            % 不冲突就把任务分配到这个资源当中，否则分配到下一个资源当中，直到无资源可分
+            Tasks_Tabu(p,resource_name) = 1;
+            break
+        end
+        if j == C_size
+            vir_re(p) = 1;
+        end
+    end
+end
+% 在任务都分配到对应资源当中后，按列提取出来
+Tasks_Tabu = [Tasks_Tabu,vir_re']; % 得到真实资源和虚拟资源的任务表 
+Solu_Tabu = zeros(Resou_num+1,tasks_num);
+for i = 1:Resou_num+1
+    index = find(Tasks_Tabu(:,i) > 0);
+    % 求索引向量中元素的个数
+    m = size(index,1);
+    Solu_Tabu(i,1:m) = index;
+    Solu_Tabu(i,m+1:end) = [];
+end
+end
+%% 子函数4，冲突检查，未分配任务与已分配的任务的冲突检查 %%%%%%%%%%%%%%%%%%%
+function check_num = conflict_check(resource_name,SE_sats,indexes,duration,UAVs,t_pos,i,...
+    sats_start,sats_end,uavs1_start,uavs1_end)
+% 冲突检查指的时是否会发生必然交叉，卫星的必然冲突指的是有效时间窗交叉
+% 无人机的交叉考虑最大距离和时间窗限制
+% 先判断资源j属于哪种资源，已分配在资源j的任务tasks_arranged,对应的时间窗为元组形式
+% 已分配的任务在卫星下的时间窗是元组的形式
+% 已分配的任务在无人机下的时间窗是矩阵的形式
+j = resource_name;
+check_num = 1;
+% 这个地方锁死了，特别注意啊！！！！！！！！！！！！！！！！！！！！!!!!!!!!!
+if  j >= sats_start && j <= sats_end % 资源j属于卫星判断
+    % 获取任务i在资源j下的时间窗元组
+    tw_objs = SE_sats.TW_tasks{i,j};
+    t = size(tw_objs,1); % 任务i的时间窗元组行数
+    check_num = zeros(1,t); % 任务i在资源j下有t个时间窗，行向量
+    for p = 1:t
+        tw_obj = tw_objs(p,:); % 获取任务i在资源j下的一个有效时间窗
+        m = size(indexes,1); % 已分配任务的数量
+        % 获取已分配的任务在资源j下的时间窗元组
+        % 逐行读取每一行的时间窗，判断是否存在交叉的情况
+        for q = 1:m
+            TW = SE_sats.TW_tasks{indexes(q),j};
+            % 判断TW元组有几行
+            n = size(TW,1);
+            check_num(1,p) = 1; % 假设存在有效时间窗的交叉
+            % 逐行读取已分配任务时间窗元组中的行，如果存在与任务i不交叉的时间窗，break
+            for k = 1:n
+                tw = TW(k,:); % 获取第k行时间窗
+                if tw(2)-tw(1)+tw_obj(2)-tw_obj(1)-(max([tw(2),tw_obj(2)])-...
+                        min([tw(1),tw_obj(1)])) <= 0
+                    check_num(1,p) = 0; % 不存在交叉
+                end
+            end
+            % 如果存在已分配任务的时间窗都与任务i的第p个时间窗交叉，跳出循环
+            if check_num(1,p) == 1
+                break
+            end
+        end
+    end
+    % 得到任务i在资源j下的每一个时间窗冲突向量，检查是否有0的存在，如果有，说明可分配在资源j
+    for p = 1:t
+        if check_num(1,p) == 0
+            check_num = 0; % 可分配
+            break
+        else
+            check_num = 1; % 不可分配在资源j下
+        end
+    end
+else % 资源j属于无人机
+    if j >= uavs1_start && j <= uavs1_end
+    % 获取任务i在资源j下的时间窗,在无人机观测下只有一个时间窗
+    % TODO判断已分配的任务是否会与任务i冲突,最大距离以及时间窗
+    % 这个地方锁死了，特别注意啊！！！！！！！！！！！！！！！！！！！！
+        tw_obj = UAVs.TW_tasks_1(i,:);
+        m = size(indexes,1); % 已分配任务的数量
+        for q = 1:m
+            tw = UAVs.TW_tasks_1(indexes(q),:); % 获取已分配任务的时间窗
+            % 最大距离冲突以及时间窗冲突
+            dur1 = duration(i);
+            dur2 = duration(indexes(q));
+            t_pos1 = t_pos(i,:);
+            t_pos2 = t_pos(indexes(q),:);
+            check_num = conflict_dis_time(t_pos1,t_pos2,tw_obj,tw,dur1,dur2,base,V_UAV,D_UAV);
+            if check_num == 1 % 如果存在与未分配任务必然冲突的已分配任务，就退出
+                break
+            end
+        end
+    else
+        tw_obj = UAVs.TW_tasks_2(i,:);
+        m = size(indexes,1); % 已分配任务的数量
+        for q = 1:m
+            tw = UAVs.TW_tasks_2(indexes(q),:); % 获取已分配任务的时间窗
+            % 最大距离冲突以及时间窗冲突
+            dur1 = duration(i);
+            dur2 = duration(indexes(q));
+            t_pos1 = t_pos(i,:);
+            t_pos2 = t_pos(indexes(q),:);
+            check_num = conflict_dis_time(t_pos1,t_pos2,tw_obj,tw,dur1,dur2,base,V_UAV,D_UAV);
+            if check_num == 1 % 如果存在与未分配任务必然冲突的已分配任务，就退出
+                break
+            end
+        end
+    end   
+end
+end
+%% 子函数5，最大距离冲突和时间窗冲突 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function check_num = conflict_dis_time(t_pos1,t_pos2,tw_obj,tw,dur1,dur2,base,V_UAV,D_UAV)
+% 任务i是未分配的任务，任务q是已分配的任务。
+% 如果是属于基地1的，引用base1，否则使用base2.
+% tw_obj代表任务i的有效时间窗，tw代表未分配任务p的有效时间窗
+% dur1是任务i的持续时间，dur2是未分配任务p的持续时间
+% t_pos1 是任务i的位置， t_pos2 是未分配任务p的位置，
+check_num = 0; 
+distance3 = distance_value(base,t_pos1); % 任务i与基地之间的距离
+distance1 = distance_value(t_pos2,t_pos1); % 任务p与任务i之间的距离
+time1 = distance1/V_UAV*3600; % 任务p与任务i之间的飞行时间
+distance2 = distance_value(base,t_pos2); % 任务p与基地之间的距离
+distance = distance1+distance2+distance3;
+% 最大距离判断（必定冲突）
+if distance > 2*D_UAV
+    check_num = 1;
+elseif tw_obj(1) >= tw(2) && tw(1)+time1+dur2 > tw_obj(2)
+    check_num = 1;
+elseif tw(1) >= tw_obj(2) && tw_obj(1)+time1+dur1 > tw(2)
+    check_num = 1;
+end
+end
+
+
+
