@@ -1,0 +1,128 @@
+
+%功能描述：对任务进行调度
+function [total_reward,Dispatch,mission_undispatch]=FunDispatch(newsequence,Dis_Refer,interval,profit,tw,middle_tw,Dot_Num,k,Speed,Max_Voyage,Max_Energy,Max_tasks,duration)
+% 输入：分配给每个无人机的任务序列
+%           距离矩阵
+%           时间窗长度
+%           收益值
+%           时间窗
+%           包括机场在内所有点的个数
+%           无人机个数
+%           速度
+%% 对每一个无人机的任务进行评分
+%指标有到机场的距离、时间窗的长度、紧急程度、位置优势、收益值
+E = zeros(k,1);
+ score=Score(newsequence,Dis_Refer,interval,profit,tw,Dot_Num);
+ dispatch=zeros(size(newsequence,1),size(newsequence,2));
+ dispatch0=zeros(size(newsequence,1),size(newsequence,2));
+ location=ones(size(newsequence,1),size(newsequence,2))*inf;
+ mission_undispatch=zeros(size(newsequence,1),size(newsequence,2));
+ %计算newsequence每一行的有效数字
+ newrecord=sum(newsequence~=0,2);
+ %时间窗的中间值
+% for i=1:Dot_Num-1
+%     middle_tw(i,1)=ceil((tw(i,1)+tw(i,2))/2);
+% end
+%% 初始分配，根据得分进行任务的选择
+ for i=1:k
+     %第一次选择得分最高的任务
+     %只是满足时间窗的任务
+     dispatch(i,1)=score.bigsequence(i,1);
+     location(i,1)=1;%用来代表每个任务执行的先后顺序
+     %既满足时间窗也满足航程约束
+     Dispatch(i,:)=dispatch(i,:);
+     Location(i,:)=location(i,:);
+     q=2;
+     num_undispatch=1;
+     
+     for j=2:newrecord(i)
+         dispatch(i,:)=Dispatch(i,:);
+         location(i,:)=Location(i,:);
+         execute =0;%逻辑变量：表示任务是否可以执行
+         %按照得分的高低选择任务，并且看时间窗和航程是否满足要求
+         %记录dispatch中每行的有效数字
+         dispatch_record=sum(dispatch~=0,2);
+         %% 判断时间窗是否满足要求，首先选择最后执行，其次插入其他任务前面
+%          判断能不能放在最后执行
+         t1=round(Dis_Refer(score.bigsequence(i,j),dispatch(i,dispatch_record(i)))/Speed(i));
+         if middle_tw(dispatch(i,dispatch_record(i)))+t1<=tw(score.bigsequence(i,j),2)
+             dispatch(i,q)=score.bigsequence(i,j);
+             location(i,q)=q;
+             execute =1; % 表示该任务可以被执行
+         else
+         %每选择一个任务要选择插入哪个任务的前面
+         for p=1:dispatch_record(i)
+             if middle_tw(score.bigsequence(i,j))<middle_tw(dispatch(i,p))
+                 %判断时间窗是否满足要求
+                 if location(i,p)==1%插在前面
+                     %只需计算该任务到下一任务的时间是否满足
+                     t2=round(Dis_Refer(score.bigsequence(i,j),dispatch(i,p))/Speed(i));
+                     if tw(score.bigsequence(i,j),1)+t2<=middle_tw(dispatch(i,p))
+                         dispatch(i,q)=score.bigsequence(i,j);
+                         %更新任务序列
+                         location(i,:)=Update_one(location(i,:),q);
+                         execute =1;
+                         break
+                     end
+                 else
+                     %既要计算该任务与前面任务是否满足时间窗要求，也要计算与后面任务是否满足时间窗要求
+                     precedence=find(location(i,:)==location(i,p)-1);
+                     t1=round(Dis_Refer(score.bigsequence(i,j),dispatch(i,precedence))/Speed(i));
+                     t2=round(Dis_Refer(score.bigsequence(i,j),dispatch(i,p))/Speed(i));
+                     if middle_tw(dispatch(i,precedence))+t1<=middle_tw(score.bigsequence(i,j))&&middle_tw(score.bigsequence(i,j))+t2<=middle_tw(dispatch(i,p))
+                        dispatch(i,q)=score.bigsequence(i,j);
+                        %更新任务序列
+                        location(i,:)=Update(location(i,:),q,p);
+                        execute =1;
+                        break
+                     end
+                 end
+             end
+         end
+         end
+         if execute==0
+             mission_undispatch(i,num_undispatch)=score.bigsequence(i,j);
+             num_undispatch=num_undispatch+1;
+         else
+         %% 在满足时间窗的基础上检查是否满足航程约束
+         %按照执行任务的先后对任务进行排序
+         [location(i,:),index_location]=sort(location(i,:));
+         for n=1:q
+             dispatch0(i,n)=dispatch(i,index_location(n));
+             E(i) = E(i) + duration(dispatch0(i,n));
+         end
+         distance(i)=Dis_Refer(dispatch0(i,1),Dot_Num);
+         
+         for m=1:q-1
+              distance(i)=distance(i)+Dis_Refer(dispatch0(i,m),dispatch0(i,m+1));
+         end
+         distance(i)=distance(i)+Dis_Refer(Dot_Num,dispatch0(i,q));
+         Num_tasks(i) = q;
+         %若满足航程需求，则替换原来的Dispatch和Location，否则不变，继续寻找
+         %% TODO还要满足最大开关机次数约束和能量约束
+         if  distance(i)<=Max_Voyage(i)&&E(i)<=Max_Energy&&Num_tasks(i)<=Max_tasks
+             Dispatch(i,:)=dispatch0(i,:);
+             Location(i,:)=location(i,:);
+             q=q+1;
+         else
+             mission_undispatch(i,num_undispatch)=dispatch(i,q);
+             num_undispatch=num_undispatch+1;
+         end
+     end
+     end
+     reward(i)=0;
+     for  num=1:q-1
+         Dispatch_num = Dispatch(i,num);
+         disp([Dispatch_num,q]);
+         if Dispatch_num == 0
+             disp(Dispatch);
+             disp([i,num,q]);
+             
+         end
+         
+         reward(i)=reward(i)+profit(Dispatch_num);
+     end
+ end
+ %求出总收益
+ total_reward=sum(reward,2);
+end
