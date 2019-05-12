@@ -1,4 +1,4 @@
-function [best_solution,best_value(end)] = ActFun(iii)
+function [bestt,best_value(end)] = ActFun(iii)
 
 %%  设置初始参数，使之具有可读性和操作更加简单方便  %%%%%%%%%%%%%%%
 % 随机生成任务点的属性
@@ -196,7 +196,7 @@ Tabu2 = TabuL2*T_unschedule; % 禁忌表2赋值
 best_value = [best_so_far_fit];
 best_solution = best_so_far;
 best_far_fit = best_so_far_fit;
-while T > 100
+while T > 10
     for p = 1:L
         %% 邻域构造 
         % 获取tasks_Opportunity_subplan，任务在子规划中心上的观测机会
@@ -253,8 +253,6 @@ while T > 100
     end
     if best_value(end) < best_so_far_fit
         best_value(end+1) = best_so_far_fit;
-        disp("best_so_far_fit=");
-        disp(best_so_far_fit);
         best_solution = solu;
     end
 %     % 禁忌表1的更新
@@ -289,10 +287,8 @@ while T > 100
         end
      end
      Tabu3(p_sub,task3) = TabuL3; % 添加禁忌对象
-     disp(p);
     end
     T = T*K; % 温度衰减
-    disp(T)
 end
 
 %% 绘制图形 
@@ -313,6 +309,10 @@ filename = ['myfig',num2str(iii*10+2),'.jpg'];
 saveas(gcf,filename);
 close;
 
+bestt = best_solution(1,:);
+for i = 2:subplan_num
+	bestt = [bestt,best_solution(i,:)];
+end
 
 
 
