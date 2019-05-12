@@ -282,10 +282,8 @@ for i = 1:P_Schedule_num
     % 首先判断子规划中心p_sub属于哪种观测资源
     if p_sub == 1||p_sub == 2
         for j = 1:r_num
-            if subplan(j,2) == p_sub
-                x = tasks_alloc_funs.Conflict_value_sats_schedule(sats,t,j,W,Schedule);
-                disp(x);
-                P_Conflict(i,2)=P_Conflict(i,2)+x;
+            if subplan(j,2) == p_sub  && tasks_Opportunity(t,j)>0
+                P_Conflict(i,2)=P_Conflict(i,2)+tasks_alloc_funs.Conflict_value_sats_schedule(sats,t,j,W,Schedule);
             end
         end
         
@@ -306,7 +304,7 @@ for i = 1:P_Schedule_num
             TW_uavs = uavs.TW_uavs2;
         end
         for j = 1:r_num
-            if subplan(j,2) == p_sub
+            if subplan(j,2) == p_sub && tasks_Opportunity(t,j)>0
                 P_Conflict(i,2)=P_Conflict(i,2)+tasks_alloc_funs2.Conflict_Caculate_schedule(TW_uavs,tasks,base,V_UAV,D_UAV,t,j,Schedule);
             end
         end
