@@ -3,8 +3,8 @@ function  funs = task_alloc_funs4
 %   此处显示详细说明
 funs.Neighborhood_structure_cross = @Neighborhood_structure_cross; % 邻域结构交换
 funs.Neighborhood_structure_insertion = @Neighborhood_structure_insertion; % 邻域结构插入
-funs.Neighborhood_structure_delete = @Neighborhood_structure_delete; % 邻域结构删除
-funs.Re_Tabu = @Re_Tabu; % 更新禁忌表
+funs.Neighborhood_structure_delete_Conflict = @Neighborhood_structure_delete_Conflict; % 邻域结构删除
+funs.Neighborhood_structure_delete_Need = @Neighborhood_structure_delete_Need; % 邻域结构删除
 end
 %% 子函数1，邻域结构交换任务 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [solu,task1,task2] = Neighborhood_structure_cross(T_schedule,Tabu1,tasks_Opportunity_subplan,tasks)
@@ -223,33 +223,10 @@ for i = 1:UnSchedule_num
     end
 end
 end
-%% 子函数3，更新禁忌表 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [Tabu1,Tabu2] = Re_Tabu(Tabu1,Tabu2,TabuL,i)
-tasks_num = size(Tabu1,1);
-subplan_num = size(Tabu2,1);
-for m = 1:tasks_num
-    for n = 1:tasks_num
-        task1 = SO_cross(i,1);
-        task2 = SO_cross(i,2);
-        if Tabu1(task1,task2) ~= 0
-            Tabu1(task1,task2) = Tabu1(task1,task2)-1;
-            Tabu1(task2,task1) = Tabu1(task2,task1)-1;
-        else
-            Tabu1(task1,task2) = TabuL;
-            Tabu1(task2,task1) = TabuL;
-        end
-    end
-end
-for m = 1:subplan_num
-    for n = 1:tasks_num
-        pass
-    end
-end
-end
 %% 子函数3，邻域结构删除，即从任意一个子规划中心已调度的任务集中选择一个平均冲突度最大的任务
 % 进行删除，然后添加到这个子规划中心的未调度任务中
-function [T_schedule,T_unschedule,p_sub,t] = Neighborhood_structure_delete(T_schedule,...
-    T_unschedule,tasks,subplan,tasks_Opportunity,sats,uavs,base1,base2,V_UAV,D_UAV,Tabu3)
+function [T_schedule,T_unschedule,p_sub,t] = Neighborhood_structure_delete_Conflict(T_schedule,...
+    T_unschedule,tasks,subplan,tasks_Opportunity,sats,uavs,base1,base2,V_UAV,D_UAV,Tabu1)
 tasks_alloc_funs = task_alloc_funs1; % 函数脚本赋值
 tasks_alloc_funs2 = task_alloc_funs2; % 函数脚本赋值
 % 首先选择任意一个子规划中心p_sub
@@ -282,13 +259,14 @@ for i = 1:P_Schedule_num
     % 首先判断子规划中心p_sub属于哪种观测资源
     if p_sub == 1||p_sub == 2
         for j = 1:r_num
-            if subplan(j,2) == p_sub  && tasks_Opportunity(t,j)>0
+            % 判断观测资源是否属于p_sub且任务t在该资源下可用
+            if subplan(j,2) == p_sub && tasks_Opportunity(t,j)>0
                 P_Conflict(i,2)=P_Conflict(i,2)+tasks_alloc_funs.Conflict_value_sats_schedule(sats,t,j,W,Schedule);
             end
         end
         
         if sum(Schedule(t,:)) == 0
-            P_Conflict(i,2) = inf; % 如果任务t在p_sub上午观测机会
+            P_Conflict(i,2) = inf; % 如果任务t在p_sub上没有观测机会
             % 在p_sub上任务t的平均冲突度
         else
             P_Conflict(i,2) = P_Conflict(i,2)/sum(Schedule(t,:));
@@ -304,6 +282,7 @@ for i = 1:P_Schedule_num
             TW_uavs = uavs.TW_uavs2;
         end
         for j = 1:r_num
+            % 判断观测资源是否属于p_sub且任务t在该资源下可用
             if subplan(j,2) == p_sub && tasks_Opportunity(t,j)>0
                 P_Conflict(i,2)=P_Conflict(i,2)+tasks_alloc_funs2.Conflict_Caculate_schedule(TW_uavs,tasks,base,V_UAV,D_UAV,t,j,Schedule);
             end
@@ -318,31 +297,55 @@ for i = 1:P_Schedule_num
         
     end
 end
-    % 对P_Conflict按照冲突度从大到小排序
-    [A,index1] = sort(P_Conflict(:,2),'descend');
-    P_Conflict = P_Conflict(index1,:);
-    % 删除冲突度最大的任务，插入到T_unschedule，禁忌策略
-    i = 1;
-    t = P_Conflict(i,1); % 任务t
-    while Tabu3(t) ~= 0 % 如果被禁忌,重新生成
-        i = i+1;
-        if i == P_Schedule_num+1
-            t = P_Conflict(1,1); % 任务t
-            break
-        end
-        t = P_Conflict(i,1); % 任务t
+% 对P_Conflict按照冲突度从大到小排序
+[A,index1] = sort(P_Conflict(:,2),'descend');
+P_Conflict = P_Conflict(index1,:);
+% 删除冲突度最大的任务，插入到T_unschedule，禁忌策略
+i = 1;
+t = P_Conflict(i,1); % 任务t
+while Tabu1(p_sub,t) ~= 0 % 如果被禁忌,重新生成
+    i = i+1;
+    if i == P_Schedule_num+1
+        t = P_Conflict(1,1); % 任务t
+        break
     end
-        T_unschedule(p_sub,t) = 1;
-        T_schedule(p_sub,t) = 0;
-   
+    t = P_Conflict(i,1); % 任务t
 end
+T_unschedule(p_sub,t) = 1;
+T_schedule(p_sub,t) = 0;
 
+end
+%% 子函数4，按照最小需求度删除子规划中心的任务
+function [T_schedule,T_unschedule,p_sub,t2] = Neighborhood_structure_delete_Need(T_schedule,...
+    T_unschedule,tasks,subplan,Tabu1)
+% 首先选择任意一个子规划中心p_sub
+subplan_num = max(subplan(:,2)); % 子规划中心的数量
+p_sub = ceil(rand*subplan_num); % 任意选择的子规划中心的编号
+%% 从已调度任务集中选择平均冲突度最大的任务，进行删除
+% 先得到该子规划中心已调度的任务集（非01编码）
+P_Schedule = find(T_schedule(p_sub,:)==1); % 行向量
+P_Schedule_num = size(P_Schedule,2); % 已调度任务的数量
+%% 从p_sub的已调度任务集P_Schedule中删除需求度最小的任务
+Need = zeros(P_Schedule_num,2); % 第1列是已调度任务编号，第2列对应的需求度
+Need(:,1) = P_Schedule';
+Need(:,2) = tasks(P_Schedule',9);
+% 按需求度对已调度的任务进行从小到大的排序
+[A,index2] = sort(Need(:,2));
+Need = Need(index2,:);
+% 禁忌策略，并在T_schedule删除t2到T_unschedule中
+i = 1;
+t2 = Need(i,1); % 任务t2
+while Tabu1(p_sub,t2) ~= 0 % 禁忌策略，直到任务t2不禁忌
+    i = i+1;
+    if i == P_Schedule_num+1
+        t2 = Need(1,1); % 任务t2
+        break
+    end
+    t2 = Need(i,1); % 任务t2
+end
+T_unschedule(p_sub,t2) = 1;
+T_schedule(p_sub,t2) = 0;
 
-
-
-
-
-
-
+end
 
 

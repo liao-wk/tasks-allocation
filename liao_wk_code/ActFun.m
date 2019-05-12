@@ -75,7 +75,7 @@ uavs.tasks_value = tasks_alloc_funs.opp_devide_weight(UAVs_N1+UAVs_N2,...
 %% 计算各个任务在所有资源下的观测机会总和以及需求度 
 tasks_Opportunity = [sats.sats_opp,uavs.opp]; 
 tasks(:,8) = tasks_alloc_funs3.Opportunity_Sum(tasks_Opportunity); % 任务的观测机会总和
-tasks(:,9) = tasks(:,8)./W; 
+tasks(:,9) = tasks(:,8)./W;
 
 
 
@@ -109,39 +109,42 @@ Conflict_tasks.average = [Conflict_tasks.sats_ave,Conflict_tasks.uavs_ave];
 %               utility = alph*value + beta*conflict                 %
 % 对任务的需求度tasks_value进行归一化，对同一个任务的各冲突度也进行归一化
  %                         初始解的求解                                    %
-% Solution = tasks_alloc_funs3.Solution_generate(tasks,Conflict_tasks,R_remain,subplan);
-solu2 = tasks_alloc_funs3.Solution_generate_average(tasks,Conflict_tasks,R_remain,subplan,sats,uavs,base1,base2,V_UAV,D_UAV);
-%% 检测每个子规划中心的安排任务数
-T = zeros(subplan_num,1);
-for i = 1:subplan_num
-    for j = 1:tasks_num
-        T(i,1) = T(i,1) + solu2(i,j);
-    end
-end
-T_schedule = zeros(subplan_num,tasks_num); %　已调度的任务集，０１编码
-T_unschedule = zeros(subplan_num,tasks_num);%　未调度的任务集，０１编码
-best_so_far_fit2 = 0; 
-% 获得当前最优解的收益值
-for i = 1:subplan_num
-    if i == 1
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu2(i,:),sats,tasks,subplan,i);
-    elseif i == 2
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu2(i,:),sats,tasks,subplan,i);
-    elseif i == 3
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu2(i,:),tasks,base1,UAVs_N1,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
-    else
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu2(i,:),tasks,base2,UAVs_N2,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
-    end
-    best_so_far_fit2 = best_so_far_fit2 + profit;
-end
+ %% 第一种启发式算法是将任务分配给全局冲突度最小的子规划中心，比第2种更优
+% solu2 = tasks_alloc_funs3.Solution_generate(tasks,Conflict_tasks,R_remain,subplan);
+%% 第2种启发式算法是将任务按照与子规划中心已分配的任务的冲突度最小原则，没有第1种好。
+% solu2 = tasks_alloc_funs3.Solution_generate_average(tasks,Conflict_tasks,R_remain,subplan,sats,uavs,base1,base2,V_UAV,D_UAV);
 
+
+% %% 计算启发式算法的适应度
+% % 检测每个子规划中心的安排任务数
+% T = zeros(subplan_num,1);
+% for i = 1:subplan_num
+%     for j = 1:tasks_num
+%         T(i,1) = T(i,1) + solu2(i,j);
+%     end
+% end
+% T_schedule = zeros(subplan_num,tasks_num); %　已调度的任务集，０１编码
+% T_unschedule = zeros(subplan_num,tasks_num);%　未调度的任务集，０１编码
+% best_so_far_fit2 = 0; 
+% % 获得当前最优解的收益值
+% for i = 1:subplan_num
+%     if i == 1
+%         [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
+%     elseif i == 2
+%         [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
+%     elseif i == 3
+%         [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu2(i,:),tasks,base1,UAVs_N1,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
+%     else
+%         [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu2(i,:),tasks,base2,UAVs_N2,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
+%     end
+%     best_so_far_fit2 = best_so_far_fit2 + profit;
+% end
 
 
 
 %% 设计算法，实现迭代 
 %% 禁忌模拟退火算法优化任务总收益值 
 tasks_Opportunity_subplan = zeros(subplan_num,tasks_num);
-tasks_Opportunity = [sats.sats_opp,uavs.opp];
 for i = 1:tasks_num
     for j = 1:r_num
         if tasks_Opportunity(i,j) ~= 0
@@ -160,30 +163,27 @@ for i = 1:tasks_num
     solu(p_subs(1),i) = 1;
 end
 
-
 T = 1000; % 初始温度为1000度
 tasks_num = size(tasks,1);
 r_num = size(subplan,1);
 subplan_num= max(subplan(:,2));
-% Tabu1 = zeros(tasks_num,tasks_num); % 禁忌表1
-Tabu3 = zeros(subplan_num,tasks_num); % 禁忌表3
 K = 0.89; % 温度衰减参数
 L = 30; % 马尔科夫链长度
-% TabuL1 = 3; % 禁忌表1的长度
+TabuL1 = 3; % 禁忌表1的长度
 TabuL2 = 3; % 禁忌表2的长度
-TabuL3 = 3; % 禁忌表3的长度
+Tabu1 = zeros(subplan_num,tasks_num); % 禁忌表1
 % 各子规划中心已调度方案和未调度方案（二进制编码）;对应的任务收益值
 % 获取T_unschedule,subplan_num行，tasks_num列，元素为1的为在相应的subplan未调度任务
 T_schedule = zeros(subplan_num,tasks_num); %　已调度的任务集，０１编码
 T_unschedule = zeros(subplan_num,tasks_num);%　未调度的任务集，０１编码
-best_so_far = solu; % 当前最优解
-best_so_far_fit = 0; 
+best_so_far = solu; % 当前最优解向量
+best_so_far_fit = 0; % 迭代过程中的当前最优解
 % 获得当前最优解的收益值
 for i = 1:subplan_num
     if i == 1
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,i);
+        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
     elseif i == 2
-        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,i);
+        [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
     elseif i == 3
         [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu(i,:),tasks,base1,UAVs_N1,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
     else
@@ -193,10 +193,10 @@ for i = 1:subplan_num
 end
 tasks_alloc_funs4 = task_alloc_funs4; % 函数脚本赋值
 Tabu2 = TabuL2*T_unschedule; % 禁忌表2赋值
-best_value = [best_so_far_fit];
-best_solution = best_so_far;
+best_value = best_so_far_fit; % 迭代中的历史最优解
+best_solution = best_so_far; % 迭代中的历史最优解向量
 best_far_fit = best_so_far_fit;
-while T > 700
+while T > 300
     for p = 1:L
         %% 邻域构造 
         % 获取tasks_Opportunity_subplan，任务在子规划中心上的观测机会
@@ -207,11 +207,14 @@ while T > 700
             R_subplan(agent_code,2) = R_subplan(agent_code,2)+R_remain(1,2);
         end
         clear agent_code;
-        %% 邻域结构交换
-%         [solu,task1,task2] = tasks_alloc_funs4.Neighborhood_structure_cross(T_schedule,Tabu1,tasks_Opportunity_subplan,tasks);
         %% 邻域结构删除已调度的任务
-        [T_schedule,T_unschedule,p_sub,task3] =  tasks_alloc_funs4.Neighborhood_structure_delete(T_schedule,...
-    T_unschedule,tasks,subplan,tasks_Opportunity,sats,uavs,base1,base2,V_UAV,D_UAV,Tabu3);
+        if rand > 0.5
+            [T_schedule,T_unschedule,p_sub,task3] =  tasks_alloc_funs4.Neighborhood_structure_delete_Conflict(T_schedule,...
+                T_unschedule,tasks,subplan,tasks_Opportunity,sats,uavs,base1,base2,V_UAV,D_UAV,Tabu1);
+        else
+            [T_schedule,T_unschedule,p_sub,task3] = tasks_alloc_funs4.Neighborhood_structure_delete_Need(T_schedule,...
+                T_unschedule,tasks,subplan,Tabu1);
+        end
         % 已调度的任务在各子规划中心下消耗的资源
         for j = 1:subplan_num
             for i = 1:tasks_num
@@ -223,93 +226,74 @@ while T > 700
         %% 将未调度的任务按照最小冲突度(与已调度任务)的原则插入到对应的子规划中心
         solu = tasks_alloc_funs4.Neighborhood_structure_insertion(solu,T_unschedule,R_subplan,...
                 Conflict_tasks,subplan,sats,uavs,tasks,base1,base2,V_UAV,D_UAV,Tabu2);
-        
-    %% 更新禁忌表&&退火策略
-    current_fit = 0; % 当前解的适应度
-    for i = 1:subplan_num
-        if i == 1
-            [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,i);
-        elseif i == 2
-            [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,i);
-        elseif i == 3
-            [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu(i,:),tasks,base1,UAVs_N1,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
-        else
-            [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu(i,:),tasks,base2,UAVs_N2,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
+            
+        %% 退火策略
+        current_fit = 0; % 当前解的适应度
+        for i = 1:subplan_num
+            if i == 1
+                [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
+            elseif i == 2
+                [profit,T_schedule(i,:),T_unschedule(i,:)] = sats_func(solu(i,:),sats,tasks,subplan,R_remain(1,2),R_remain(1,1),i);
+            elseif i == 3
+                [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu(i,:),tasks,base1,UAVs_N1,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
+            else
+                [profit,T_schedule(i,:),T_unschedule(i,:)] = uavs_func(solu(i,:),tasks,base2,UAVs_N2,D_UAV,V_UAV,R_remain(1,2),R_remain(1,1),tasks(:,7));
+            end
+            current_fit = current_fit + profit;
         end
-        current_fit = current_fit + profit;
-    end
 
-    if current_fit > best_so_far_fit 
-        best_so_far_fit = current_fit;
-        best_so_far = solu;
-        best_far_fit = [best_far_fit,best_so_far_fit];
-    else
-        delta = abs(best_so_far_fit-current_fit);
-        if exp(-1*delta/T) > rand
+        if current_fit > best_so_far_fit
             best_so_far_fit = current_fit;
             best_so_far = solu;
-            best_far_fit = [best_far_fit,best_so_far_fit];
+        else
+            delta = abs(best_so_far_fit-current_fit);
+            if exp(-1*delta/T) > rand
+                best_so_far_fit = current_fit;
+                best_so_far = solu;
+            end
         end
-    end
-    if best_value(end) < best_so_far_fit
-        best_value(end+1) = best_so_far_fit;
-        best_solution = solu;
-    end
-%     % 禁忌表1的更新
-%     for m = 1:tasks_num
-%         for n = 1:tasks_num
-%             if Tabu1(m,n) ~= 0
-%                 Tabu1(m,n) = Tabu1(m,n)-1;
-%                 Tabu1(n,m) = Tabu1(n,m)-1;
-%             end
-%         end
-%     end
-%     Tabu1(task1,task2) = TabuL1; % 添加禁忌对象
-%     Tabu1(task2,task1) = TabuL1; % 添加禁忌对象
-    % 禁忌表2的更新
-     for m = 1:subplan_num
-        for n = 1:tasks_num
-            if T_unschedule(m,n) ~= 0 
-                Tabu2(m,n) = TabuL2;
-            else
-                if Tabu2(m,n) ~= 0
-                    Tabu2(m,n) = Tabu2(m,n)-1;
+        if best_value(end) < best_so_far_fit
+            best_value(end+1) = best_so_far_fit;
+            disp(best_so_far_fit);
+            best_solution = solu;
+        else
+            best_value = [best_value,best_value(end)];
+        end
+        %% 更新禁忌表 
+        % 1.禁忌表1的更新
+        for m = 1:subplan_num
+            for n = 1:tasks_num
+                if Tabu1(m,n) ~= 0
+                    Tabu1(m,n) = Tabu1(m,n)-1;
                 end
             end
         end
-     end
-     % 禁忌表3的更新
-     for m = 1:subplan_num
-        for n = 1:tasks_num
-            if Tabu3(m,n) ~= 0
-                Tabu3(m,n) = Tabu3(m,n)-1;
+        Tabu1(p_sub,task3) = TabuL1; % 添加禁忌对象
+        % 2.禁忌表2的更新
+        for m = 1:subplan_num
+            for n = 1:tasks_num
+                if T_unschedule(m,n) ~= 0
+                    Tabu2(m,n) = TabuL2;
+                else
+                    if Tabu2(m,n) ~= 0
+                        Tabu2(m,n) = Tabu2(m,n)-1;
+                    end
+                end
             end
         end
-     end
-     Tabu3(p_sub,task3) = TabuL3; % 添加禁忌对象
     end
     T = T*K; % 温度衰减
 end
 
-len = size(best_far_fit,2);
-best_value_list = best_far_fit(1);
-for i = 1:len
-    if best_far_fit(i) > best_value_list(end)
-        best_value = best_far_fit(i);
-    else
-        best_value = best_value_list(end);
-    end
-    best_value_list(end+1) = best_value;
-end
 figure(1)
-plot(best_value_list);
-hold on;
-xlabel("x/迭代次数");
-ylabel("y/适应度");
-title(["历史优化收益值：",num2str(best_value_list(end))]);
+plot(best_value);
+xlabel('x/迭代次数');
+ylabel('y/适应度');
+title(['历史优化收益值：',num2str(best_value(end))]);
 filename = ['myfig',num2str(iii*10+1),'.jpg'];
 saveas(gcf,filename);
 close;
+
 figure(2)
 plot(best_far_fit);
 xlabel('x/迭代次数');

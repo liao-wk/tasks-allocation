@@ -1,8 +1,8 @@
-function [profit,T_schedule,T_unschedule] = sats_func(solu,sats,tasks,subplan,agent_code)
+function [profit,T_schedule,T_unschedule] = sats_func(solu,sats,tasks,subplan,Energy_C,Volum_C,agent_code)
 %UNTITLED 此处显示有关此函数的摘要
 %   此处显示详细说明
-Volum_C = 3000; % 观测时间限制
-Energy_C = 1400; % 最大开关机次数限制
+% Volum_C = 3000; % 观测时间限制
+% Energy_C = 140; % 最大开关机次数限制
 tasks_num = size(solu,2);
 % 将任务集的编号进行重新编号，从1开始，因此需要设一个矩阵来表示新的编号对应的旧编号
 % 第一列是新编号，第二列是旧编号
