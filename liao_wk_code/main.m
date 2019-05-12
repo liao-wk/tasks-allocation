@@ -13,5 +13,5 @@ end
 [best_fit,index1] = max(Results_fit); % 最优适应度值
 best_so_far = Results(index1,:); % 最优解向量
 % 将结果储存在excel当中
-xls.write('Results.xlsx',Results)
-xls.write('Results_fit.xlsx',Results_fit)
+xlswrite('Results.xlsx',Results)
+xlswrite('Results_fit.xlsx',Results_fit)

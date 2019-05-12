@@ -1,4 +1,4 @@
-function [bestt,best_value(end)] = ActFun(iii)
+function [bestt,best_value_fit] = ActFun(iii)
 
 %%  设置初始参数，使之具有可读性和操作更加简单方便  %%%%%%%%%%%%%%%
 % 随机生成任务点的属性
@@ -169,7 +169,7 @@ subplan_num= max(subplan(:,2));
 Tabu3 = zeros(subplan_num,tasks_num); % 禁忌表3
 K = 0.89; % 温度衰减参数
 L = 30; % 马尔科夫链长度
-TabuL1 = 3; % 禁忌表1的长度
+% TabuL1 = 3; % 禁忌表1的长度
 TabuL2 = 3; % 禁忌表2的长度
 TabuL3 = 3; % 禁忌表3的长度
 % 各子规划中心已调度方案和未调度方案（二进制编码）;对应的任务收益值
@@ -196,7 +196,7 @@ Tabu2 = TabuL2*T_unschedule; % 禁忌表2赋值
 best_value = [best_so_far_fit];
 best_solution = best_so_far;
 best_far_fit = best_so_far_fit;
-while T > 10
+while T > 700
     for p = 1:L
         %% 邻域构造 
         % 获取tasks_Opportunity_subplan，任务在子规划中心上的观测机会
@@ -291,12 +291,22 @@ while T > 10
     T = T*K; % 温度衰减
 end
 
-%% 绘制图形 
+len = size(best_far_fit,2);
+best_value_list = best_far_fit(1);
+for i = 1:len
+    if best_far_fit(i) > best_value_list(end)
+        best_value = best_far_fit(i);
+    else
+        best_value = best_value_list(end);
+    end
+    best_value_list(end+1) = best_value;
+end
 figure(1)
-plot(best_value);
-xlabel('x/迭代次数');
-ylabel('y/适应度');
-title(['历史优化收益值：',num2str(best_value(end))]);
+plot(best_value_list);
+hold on;
+xlabel("x/迭代次数");
+ylabel("y/适应度");
+title(["历史优化收益值：",num2str(best_value_list(end))]);
 filename = ['myfig',num2str(iii*10+1),'.jpg'];
 saveas(gcf,filename);
 close;
@@ -313,7 +323,7 @@ bestt = best_solution(1,:);
 for i = 2:subplan_num
 	bestt = [bestt,best_solution(i,:)];
 end
-
+best_value_fit = best_value(end);
 
 
 
